@@ -159,6 +159,7 @@ class TestBaseRunner(base.TestCase):
     def test_delete_missing_configs_docker(self, popen):
         self.mock_execute(popen, 'one\ntwo\nthree\nfour', '', 0)
         self.runner.remove_containers = mock.Mock()
+        self.runner.stop_container = mock.Mock()
 
         self.runner.delete_missing_configs(['two', 'three'])
         self.assert_execute(
@@ -167,7 +168,10 @@ class TestBaseRunner(base.TestCase):
                     '--format', '{{.Label "config_id"}}']
         )
 
-        # containers one and four will be deleted
+        # containers one and four will be stopped and deleted
+        self.runner.stop_container.assert_has_calls([
+            mock.call('one'), mock.call('four')
+        ], any_order=True)
         self.runner.remove_containers.assert_has_calls([
             mock.call('one'), mock.call('four')
         ], any_order=True)
@@ -273,21 +277,29 @@ class TestBaseRunner(base.TestCase):
         )
 
     @mock.patch('subprocess.Popen')
-    def test_stop_container(self, popen):
+    @mock.patch('paunch.builder.base.BaseBuilder')
+    def test_stop_container(self, bld, popen):
         self.mock_execute(popen, '', '', 0)
+        bld.config = {}
 
         self.runner.stop_container('one')
         self.assert_execute(
-            popen, ['docker', 'stop', 'one']
+            popen, ['docker', 'stop', '--stop-signal=SIGTERM',
+                    '--stop-timeout=10.0', 'one']
         )
 
     @mock.patch('subprocess.Popen')
-    def test_stop_container_override(self, popen):
+    @mock.patch('paunch.builder.base.BaseBuilder')
+    def test_stop_container_override(self, bld, popen):
         self.mock_execute(popen, '', '', 0)
 
+        bld.config = {}
+        bld.config['one'] = {'stop_timeout': '42m',
+                             'stop_signal': 'SIGINT'}
         self.runner.stop_container('one', 'podman')
         self.assert_execute(
-            popen, ['podman', 'stop', 'one']
+            popen, ['podman', 'stop', '--stop-signal=SIGINT',
+                    '--stop-timeout=2520.0', 'one']
         )
 
     @mock.patch('subprocess.Popen')
